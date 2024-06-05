@@ -1,3 +1,3 @@
-module github.com/springeye/zubao/v1
+module github.com/springeye/zubao
 
 go 1.22.1

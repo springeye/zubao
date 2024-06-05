@@ -1,6 +1,6 @@
 package main
 
-import "github.com/springeye/zubao"
+import zubao "github.com/springeye/zubao"
 
 func main() {
 	client := zubao.NewSDKClient("1511111111111", "adfjklajfklafjklasdf", "https://www.hzzszf.com/interface/")
