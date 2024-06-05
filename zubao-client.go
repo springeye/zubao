@@ -61,6 +61,14 @@ func NewSDKClient(account, authToken, host string) *SDKClient {
 		host:      host,
 	}
 }
+func NewSDKClientWithHttpClient(account, authToken, host string, httpClient *http.Client) *SDKClient {
+	return &SDKClient{
+		http:      httpClient,
+		account:   account,
+		authToken: authToken,
+		host:      host,
+	}
+}
 
 type P map[string]string
 
