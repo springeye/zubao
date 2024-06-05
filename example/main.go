@@ -1,5 +1,3 @@
-## 用法
-```go
 package main
 
 import "github.com/springeye/zubao"
@@ -14,5 +12,3 @@ func main() {
 	println(detail)
 
 }
-
-```
