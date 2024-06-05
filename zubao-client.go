@@ -53,7 +53,7 @@ type SDKClient struct {
 	host      string
 }
 
-func NewClient(account, authToken, host string) *SDKClient {
+func NewSDKClient(account, authToken, host string) *SDKClient {
 	return &SDKClient{
 		http:      &http.Client{},
 		account:   account,
