@@ -8,10 +8,9 @@ import (
 	"strings"
 )
 
-type Result struct {
-	Result int    `json:"result"` // 1: success, 0: failed
-	Msg    string `json:"msg"`    // error message
-}
+//import jsoniter "github.com/json-iterator/go"
+//
+//var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 // AmmeterDetail 电表详情
 type AmmeterDetail struct {
@@ -73,14 +72,21 @@ func NewSDKClientWithHttpClient(account, authToken, host string, httpClient *htt
 type P map[string]string
 
 func (c *SDKClient) get(params P) ([]byte, error) {
+	if c.account == "" {
+		return nil, fmt.Errorf("account不能为空")
+	}
+	if c.authToken == "" {
+		return nil, fmt.Errorf("authToken不能为空")
+	}
 	url := c.host
+	url += "?account=" + c.account + "&authToken=" + c.authToken + "&"
 	if len(params) > 0 {
-		url += "?"
 		for key, val := range params {
 			url += fmt.Sprintf("%s=%s&", key, val)
 		}
 		url = strings.TrimSuffix(url, "&")
 	}
+
 	res, err := c.http.Get(fmt.Sprintf(url))
 	if err != nil {
 		return nil, err
@@ -89,7 +95,9 @@ func (c *SDKClient) get(params P) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-
+	if strings.Contains(string(body), "Access Denied") {
+		return nil, fmt.Errorf("没有访问权限")
+	}
 	return body, err
 
 }
