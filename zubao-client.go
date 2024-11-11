@@ -1,16 +1,19 @@
 package zubao
 
 import (
-	"encoding/json"
 	"fmt"
-	"io"
+	json "github.com/go-json-experiment/json"
+	"log/slog"
 	"net/http"
 	"strings"
 )
+import resty "github.com/go-resty/resty/v2"
 
-//import jsoniter "github.com/json-iterator/go"
-//
-//var json = jsoniter.ConfigCompatibleWithStandardLibrary
+type Response[T any] struct {
+	Result  string `json:"result"`
+	Message string `json:"msg"`
+	Data    T      `json:"data"`
+}
 
 // AmmeterDetail 电表详情
 type AmmeterDetail struct {
@@ -46,60 +49,65 @@ type GasmeterDetail struct {
 }
 
 type SDKClient struct {
-	http      *http.Client
+	http      *resty.Client
 	account   string
 	authToken string
 	host      string
 }
 
 func NewSDKClient(account, authToken, host string) *SDKClient {
-	return &SDKClient{
-		http:      &http.Client{},
+	client := resty.New().SetDebug(true)
+	client.SetBaseURL(host)
+	sdkClient := SDKClient{
+		http:      client,
 		account:   account,
 		authToken: authToken,
 		host:      host,
 	}
+	sdkClient.init()
+	return &sdkClient
+}
+func (c *SDKClient) init() {
+	if c.account == "" {
+		slog.Error("account不能为空\n")
+	}
+	if c.authToken == "" {
+		slog.Error("authToken不能为空\n")
+	}
+	c.http.OnBeforeRequest(func(client *resty.Client, request *resty.Request) error {
+		request.FormData.Add("authToken", c.authToken)
+		request.FormData.Add("account", c.account)
+		return nil
+	})
 }
 func NewSDKClientWithHttpClient(account, authToken, host string, httpClient *http.Client) *SDKClient {
-	return &SDKClient{
-		http:      httpClient,
+
+	client := resty.NewWithClient(httpClient)
+	client.SetBaseURL(host)
+
+	sdkClient := SDKClient{
+		http:      client,
 		account:   account,
 		authToken: authToken,
 		host:      host,
 	}
+	sdkClient.init()
+	return &sdkClient
 }
 
 type P map[string]string
 
-func (c *SDKClient) get(params P) ([]byte, error) {
-	if c.account == "" {
-		return nil, fmt.Errorf("account不能为空")
-	}
-	if c.authToken == "" {
-		return nil, fmt.Errorf("authToken不能为空")
-	}
-	url := c.host
-	url += "?account=" + c.account + "&authToken=" + c.authToken + "&"
-	if len(params) > 0 {
-		for key, val := range params {
-			url += fmt.Sprintf("%s=%s&", key, val)
-		}
-		url = strings.TrimSuffix(url, "&")
-	}
-
-	res, err := c.http.Get(fmt.Sprintf(url))
+func (c *SDKClient) post(params P) ([]byte, error) {
+	resp, err := c.http.R().SetFormData(params).
+		Post(c.host)
 	if err != nil {
 		return nil, err
 	}
-	body, err := io.ReadAll(res.Body)
-	if err != nil {
-		return nil, err
-	}
+	body := resp.Body()
 	if strings.Contains(string(body), "Access Denied") {
 		return nil, fmt.Errorf("没有访问权限")
 	}
 	return body, err
-
 }
 
 // AmmeterSwitch 电表详情
@@ -107,7 +115,7 @@ func (c *SDKClient) get(params P) ([]byte, error) {
 // value: 开关状态("ON"或者“OFF”)
 func (c *SDKClient) AmmeterSwitch(device, value string) (*Result, error) {
 	do := "ammeterSwitch"
-	bytes, err := c.get(P{
+	bytes, err := c.post(P{
 		"do":     do,
 		"device": device,
 		"switch": value,
@@ -122,16 +130,16 @@ func (c *SDKClient) AmmeterSwitch(device, value string) (*Result, error) {
 
 // AmmeterDetail 电表详情
 // device: 电表编号
-func (c *SDKClient) AmmeterDetail(device string) (*AmmeterDetail, error) {
+func (c *SDKClient) AmmeterDetail(device string) (*Response[AmmeterDetail], error) {
 	do := "ammeterDetail"
-	bytes, err := c.get(P{
+	bytes, err := c.post(P{
 		"do":     do,
 		"device": device,
 	})
 	if err != nil {
 		return nil, err
 	}
-	var result AmmeterDetail
+	var result Response[AmmeterDetail]
 	err = json.Unmarshal(bytes, &result)
 	return &result, err
 }
@@ -140,7 +148,7 @@ func (c *SDKClient) AmmeterDetail(device string) (*AmmeterDetail, error) {
 // device: 电表编号
 func (c *SDKClient) AmmeterInstall(device string) (*Result, error) {
 	do := "ammeterInstall"
-	bytes, err := c.get(P{
+	bytes, err := c.post(P{
 		"do":     do,
 		"device": device,
 	})
@@ -157,7 +165,7 @@ func (c *SDKClient) AmmeterInstall(device string) (*Result, error) {
 // value: 开关状态("ON"或者“OFF”)
 func (c *SDKClient) WatermeterSwitch(device, value string) (*Result, error) {
 	do := "watermeterSwitch"
-	bytes, err := c.get(P{
+	bytes, err := c.post(P{
 		"do":     do,
 		"device": device,
 		"switch": value,
@@ -174,7 +182,7 @@ func (c *SDKClient) WatermeterSwitch(device, value string) (*Result, error) {
 // device: 水表编号
 func (c *SDKClient) WatermeterInstall(device string) (*Result, error) {
 	do := "watermeterInstall"
-	bytes, err := c.get(P{
+	bytes, err := c.post(P{
 		"do":     do,
 		"device": device,
 	})
@@ -188,16 +196,16 @@ func (c *SDKClient) WatermeterInstall(device string) (*Result, error) {
 
 // WatermeterDetail 水表详情
 // device: 水表编号
-func (c *SDKClient) WatermeterDetail(device string) (*WatermeterDetail, error) {
+func (c *SDKClient) WatermeterDetail(device string) (*Response[WatermeterDetail], error) {
 	do := "watermeterDetail"
-	bytes, err := c.get(P{
+	bytes, err := c.post(P{
 		"do":     do,
 		"device": device,
 	})
 	if err != nil {
 		return nil, err
 	}
-	var result WatermeterDetail
+	var result Response[WatermeterDetail]
 	err = json.Unmarshal(bytes, &result)
 	return &result, err
 }
@@ -207,7 +215,7 @@ func (c *SDKClient) WatermeterDetail(device string) (*WatermeterDetail, error) {
 // value: 开关状态("ON"或者“OFF”)
 func (c *SDKClient) GasmeterSwitch(device, value string) (*Result, error) {
 	do := "gasmeterSwitch"
-	bytes, err := c.get(P{
+	bytes, err := c.post(P{
 		"do":     do,
 		"device": device,
 		"switch": value,
@@ -224,7 +232,7 @@ func (c *SDKClient) GasmeterSwitch(device, value string) (*Result, error) {
 // device: 气表编号
 func (c *SDKClient) GasmeterInstall(device string) (*Result, error) {
 	do := "gasmeterInstall"
-	bytes, err := c.get(P{
+	bytes, err := c.post(P{
 		"do":     do,
 		"device": device,
 	})
@@ -238,16 +246,16 @@ func (c *SDKClient) GasmeterInstall(device string) (*Result, error) {
 
 // GasmeterDetail气表详情
 // device: 气表编号
-func (c *SDKClient) GasmeterDetail(device string) (*GasmeterDetail, error) {
+func (c *SDKClient) GasmeterDetail(device string) (*Response[GasmeterDetail], error) {
 	do := "gasmeterDetail"
-	bytes, err := c.get(P{
+	bytes, err := c.post(P{
 		"do":     do,
 		"device": device,
 	})
 	if err != nil {
 		return nil, err
 	}
-	var result GasmeterDetail
+	var result Response[GasmeterDetail]
 	err = json.Unmarshal(bytes, &result)
 	return &result, err
 }
